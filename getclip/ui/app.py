@@ -13,7 +13,8 @@ class GetClipApp:
     def __init__(self, root: tb.Window):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("600x600")
+        self.root.geometry("720x520")
+        self.root.minsize(680, 480)
 
         self.url_var = tb.StringVar()
         self.format_var = tb.StringVar(value=MediaFormat.MP4.value)
@@ -27,57 +28,85 @@ class GetClipApp:
         self._build_layout()
 
     def _build_layout(self):
-        container = tb.Frame(self.root, padding=16)
-        container.pack(fill=BOTH, expand=YES)
+        header = tb.Frame(self.root, padding=(24, 20, 24, 10))
+        header.pack(fill=X)
+        tb.Label(header, text="GetClip", font=("", 22, "bold")).pack(anchor=W)
+        tb.Label(
+            header, text="Download YouTube & Twitch clips, fast.", bootstyle=SECONDARY,
+        ).pack(anchor=W)
 
-        tb.Label(container, text="Video / Clip / VOD URL", font=("", 11, "bold")).pack(anchor=W)
-        tb.Entry(container, textvariable=self.url_var).pack(fill=X, pady=(4, 16))
+        body = tb.Frame(self.root, padding=(24, 10, 24, 0))
+        body.pack(fill=BOTH, expand=YES)
+        body.columnconfigure(0, weight=1)
+        body.columnconfigure(1, weight=1)
+        body.rowconfigure(0, weight=1)
 
-        format_frame = tb.Labelframe(container, text="Format", padding=10)
-        format_frame.pack(fill=X, pady=6)
+        self._build_source_card(body)
+        self._build_trim_card(body)
+        self._build_footer()
+
+    def _build_source_card(self, parent):
+        card = tb.Labelframe(parent, text="Source", padding=16, bootstyle=SECONDARY)
+        card.grid(row=0, column=0, sticky=NSEW, padx=(0, 10))
+
+        tb.Label(card, text="URL").pack(anchor=W)
+        tb.Entry(card, textvariable=self.url_var).pack(fill=X, pady=(4, 16))
+
+        tb.Label(card, text="Format").pack(anchor=W)
+        format_row = tb.Frame(card)
+        format_row.pack(fill=X, pady=(4, 16))
         tb.Radiobutton(
-            format_frame, text="Video (MP4)", variable=self.format_var,
-            value=MediaFormat.MP4.value,
-        ).pack(side=LEFT, padx=10)
+            format_row, text="MP4", variable=self.format_var,
+            value=MediaFormat.MP4.value, bootstyle="toolbutton",
+        ).pack(side=LEFT, padx=(0, 6))
         tb.Radiobutton(
-            format_frame, text="Audio only (MP3)", variable=self.format_var,
-            value=MediaFormat.MP3.value,
-        ).pack(side=LEFT, padx=10)
+            format_row, text="MP3", variable=self.format_var,
+            value=MediaFormat.MP3.value, bootstyle="toolbutton",
+        ).pack(side=LEFT)
 
-        quality_frame = tb.Frame(container)
-        quality_frame.pack(fill=X, pady=6)
-        tb.Label(quality_frame, text="Quality:").pack(side=LEFT)
+        tb.Label(card, text="Quality").pack(anchor=W)
         tb.Combobox(
-            quality_frame, textvariable=self.quality_var, state="readonly",
+            card, textvariable=self.quality_var, state="readonly",
             values=[q.value for q in Quality],
-        ).pack(side=LEFT, padx=8)
+        ).pack(fill=X, pady=(4, 0))
 
-        trim_frame = tb.Labelframe(container, text="Trim to timestamp range", padding=10)
-        trim_frame.pack(fill=X, pady=6)
-        tb.Checkbutton(trim_frame, text="Enable trimming", variable=self.trim_var).pack(anchor=W)
+    def _build_trim_card(self, parent):
+        card = tb.Labelframe(parent, text="Trim & Save", padding=16, bootstyle=SECONDARY)
+        card.grid(row=0, column=1, sticky=NSEW, padx=(10, 0))
 
-        time_row = tb.Frame(trim_frame)
-        time_row.pack(fill=X, pady=(8, 0))
-        tb.Label(time_row, text="Start (HH:MM:SS)").pack(side=LEFT)
-        tb.Entry(time_row, textvariable=self.start_var, width=10).pack(side=LEFT, padx=(6, 16))
-        tb.Label(time_row, text="End (HH:MM:SS)").pack(side=LEFT)
-        tb.Entry(time_row, textvariable=self.end_var, width=10).pack(side=LEFT, padx=6)
+        tb.Checkbutton(
+            card, text="Trim to timestamp range", variable=self.trim_var,
+            bootstyle="round-toggle",
+        ).pack(anchor=W, pady=(0, 14))
 
-        output_frame = tb.Frame(container)
-        output_frame.pack(fill=X, pady=6)
-        tb.Label(output_frame, text="Save to:").pack(side=LEFT)
-        tb.Entry(output_frame, textvariable=self.output_dir_var).pack(side=LEFT, fill=X, expand=YES, padx=6)
-        tb.Button(output_frame, text="Browse", command=self._choose_output_dir).pack(side=LEFT)
+        time_row = tb.Frame(card)
+        time_row.pack(fill=X, pady=(0, 16))
+        tb.Label(time_row, text="Start").pack(side=LEFT)
+        tb.Entry(time_row, textvariable=self.start_var, width=9).pack(side=LEFT, padx=(6, 16))
+        tb.Label(time_row, text="End").pack(side=LEFT)
+        tb.Entry(time_row, textvariable=self.end_var, width=9).pack(side=LEFT, padx=6)
+
+        tb.Label(card, text="Save to").pack(anchor=W)
+        out_row = tb.Frame(card)
+        out_row.pack(fill=X, pady=(4, 0))
+        tb.Entry(out_row, textvariable=self.output_dir_var).pack(side=LEFT, fill=X, expand=YES, padx=(0, 6))
+        tb.Button(
+            out_row, text="Browse", command=self._choose_output_dir, bootstyle="secondary-outline",
+        ).pack(side=LEFT)
+
+    def _build_footer(self):
+        footer = tb.Frame(self.root, padding=24)
+        footer.pack(fill=X, side=BOTTOM)
 
         self.download_btn = tb.Button(
-            container, text="Download", bootstyle=SUCCESS, command=self._on_download_clicked,
+            footer, text="Download", bootstyle=INFO, command=self._on_download_clicked,
         )
-        self.download_btn.pack(pady=16)
+        self.download_btn.pack(fill=X, pady=(0, 10), ipady=6)
 
-        self.progress = tb.Progressbar(container, mode="determinate", maximum=100)
+        self.progress = tb.Progressbar(footer, mode="determinate", maximum=100, bootstyle="info-striped")
         self.progress.pack(fill=X, pady=(0, 6))
 
-        tb.Label(container, textvariable=self.status_var).pack(anchor=W)
+        tb.Label(footer, textvariable=self.status_var, bootstyle=SECONDARY).pack(anchor=W)
 
     def _choose_output_dir(self):
         chosen = tb.filedialog.askdirectory()
