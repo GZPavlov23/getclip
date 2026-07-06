@@ -6,6 +6,7 @@ from ttkbootstrap.constants import *
 
 from getclip.core.config import APP_NAME, DEFAULT_OUTPUT_DIR
 from getclip.core.models import DownloadJob, MediaFormat, Quality
+from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
 from getclip.services.downloader import run_download
 
 
@@ -17,6 +18,7 @@ class GetClipApp:
         self.root.minsize(680, 480)
 
         self.url_var = tb.StringVar()
+        self.hint_var = tb.StringVar(value="")
         self.format_var = tb.StringVar(value=MediaFormat.MP4.value)
         self.quality_var = tb.StringVar(value=Quality.BEST.value)
         self.trim_var = tb.BooleanVar(value=False)
@@ -26,6 +28,7 @@ class GetClipApp:
         self.status_var = tb.StringVar(value="Idle")
 
         self._build_layout()
+        self.url_var.trace_add("write", self._on_url_changed)
 
     def _build_layout(self):
         header = tb.Frame(self.root, padding=(24, 20, 24, 10))
@@ -50,7 +53,8 @@ class GetClipApp:
         card.grid(row=0, column=0, sticky=NSEW, padx=(0, 10))
 
         tb.Label(card, text="URL").pack(anchor=W)
-        tb.Entry(card, textvariable=self.url_var).pack(fill=X, pady=(4, 16))
+        tb.Entry(card, textvariable=self.url_var).pack(fill=X, pady=(4, 6))
+        tb.Label(card, textvariable=self.hint_var, bootstyle="info").pack(anchor=W, pady=(0, 16))
 
         tb.Label(card, text="Format").pack(anchor=W)
         format_row = tb.Frame(card)
@@ -112,6 +116,10 @@ class GetClipApp:
         chosen = tb.filedialog.askdirectory()
         if chosen:
             self.output_dir_var.set(chosen)
+
+    def _on_url_changed(self, *args):
+        source = detect_source_type(self.url_var.get())
+        self.hint_var.set(SOURCE_HINTS[source])
 
     def _on_download_clicked(self):
         job = self._build_job_from_inputs()
