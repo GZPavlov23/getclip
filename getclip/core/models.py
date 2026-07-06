@@ -34,3 +34,16 @@ class VideoPreview:
     thumbnail_url: Optional[str]
     duration_seconds: Optional[int]
     
+class QueueStatus(Enum):
+    PENDING = "Pending"
+    DOWNLOADING = "Downloading"
+    DONE = "Done"
+    FAILED = "Failed"
+
+
+@dataclass
+class QueueItem:
+    job: DownloadJob
+    status: QueueStatus = QueueStatus.PENDING
+    label: str = ""
+    error: Optional[str] = None
