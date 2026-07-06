@@ -27,3 +27,10 @@ class DownloadJob:
     @property
     def is_trimmed(self) -> bool:
         return self.start_seconds is not None and self.end_seconds is not None
+
+@dataclass
+class VideoPreview:
+    title: str
+    thumbnail_url: Optional[str]
+    duration_seconds: Optional[int]
+    

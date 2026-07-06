@@ -7,18 +7,22 @@ from ttkbootstrap.constants import *
 from getclip.core.config import APP_NAME, DEFAULT_OUTPUT_DIR
 from getclip.core.models import DownloadJob, MediaFormat, Quality
 from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
-from getclip.services.downloader import run_download
+from getclip.services.downloader import run_download, fetch_preview
+from getclip.ui.thumbnail import load_thumbnail
+
+PREVIEW_DEBOUNCE_MS = 700
 
 
 class GetClipApp:
     def __init__(self, root: tb.Window):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("720x520")
-        self.root.minsize(680, 480)
+        self.root.geometry("760x680")
+        self.root.minsize(720, 640)
 
         self.url_var = tb.StringVar()
         self.hint_var = tb.StringVar(value="")
+        self.preview_title_var = tb.StringVar(value="")
         self.format_var = tb.StringVar(value=MediaFormat.MP4.value)
         self.quality_var = tb.StringVar(value=Quality.BEST.value)
         self.trim_var = tb.BooleanVar(value=False)
@@ -26,6 +30,9 @@ class GetClipApp:
         self.end_var = tb.StringVar()
         self.output_dir_var = tb.StringVar(value=DEFAULT_OUTPUT_DIR)
         self.status_var = tb.StringVar(value="Idle")
+
+        self._debounce_id = None
+        self._thumbnail_image = None
 
         self._build_layout()
         self.url_var.trace_add("write", self._on_url_changed)
@@ -42,15 +49,27 @@ class GetClipApp:
         body.pack(fill=BOTH, expand=YES)
         body.columnconfigure(0, weight=1)
         body.columnconfigure(1, weight=1)
-        body.rowconfigure(0, weight=1)
+        body.rowconfigure(1, weight=1)
 
+        self._build_preview_card(body)
         self._build_source_card(body)
         self._build_trim_card(body)
         self._build_footer()
 
+    def _build_preview_card(self, parent):
+        card = tb.Frame(parent, padding=(0, 0, 0, 10))
+        card.grid(row=0, column=0, columnspan=2, sticky=NSEW)
+
+        self.thumbnail_label = tb.Label(card)
+        self.thumbnail_label.pack(side=LEFT, padx=(0, 12))
+
+        tb.Label(
+            card, textvariable=self.preview_title_var, font=("", 11), wraplength=380, justify=LEFT,
+        ).pack(side=LEFT, anchor=W)
+
     def _build_source_card(self, parent):
         card = tb.Labelframe(parent, text="Source", padding=16, bootstyle=SECONDARY)
-        card.grid(row=0, column=0, sticky=NSEW, padx=(0, 10))
+        card.grid(row=1, column=0, sticky=NSEW, padx=(0, 10))
 
         tb.Label(card, text="URL").pack(anchor=W)
         tb.Entry(card, textvariable=self.url_var).pack(fill=X, pady=(4, 6))
@@ -76,7 +95,7 @@ class GetClipApp:
 
     def _build_trim_card(self, parent):
         card = tb.Labelframe(parent, text="Trim & Save", padding=16, bootstyle=SECONDARY)
-        card.grid(row=0, column=1, sticky=NSEW, padx=(10, 0))
+        card.grid(row=1, column=1, sticky=NSEW, padx=(10, 0))
 
         tb.Checkbutton(
             card, text="Trim to timestamp range", variable=self.trim_var,
@@ -120,6 +139,43 @@ class GetClipApp:
     def _on_url_changed(self, *args):
         source = detect_source_type(self.url_var.get())
         self.hint_var.set(SOURCE_HINTS[source])
+
+        if self._debounce_id is not None:
+            self.root.after_cancel(self._debounce_id)
+
+        self.preview_title_var.set("")
+        self.thumbnail_label.configure(image="")
+
+        url = self.url_var.get().strip()
+        if not url:
+            return
+
+        self._debounce_id = self.root.after(PREVIEW_DEBOUNCE_MS, lambda: self._start_preview_fetch(url))
+
+    def _start_preview_fetch(self, url: str):
+        self.preview_title_var.set("Loading preview...")
+        thread = threading.Thread(target=self._fetch_preview_in_background, args=(url,), daemon=True)
+        thread.start()
+
+    def _fetch_preview_in_background(self, url: str):
+        try:
+            preview = fetch_preview(url)
+            thumbnail_image = None
+            if preview.thumbnail_url:
+                thumbnail_image = load_thumbnail(preview.thumbnail_url, max_width=180)
+            self.root.after(0, lambda: self._show_preview(preview.title, thumbnail_image))
+        except Exception:
+            self.root.after(0, lambda: self.preview_title_var.set(""))
+
+    def _show_preview(self, title: str, thumbnail_image):
+        if self.url_var.get().strip() == "":
+            return
+
+        self.preview_title_var.set(title)
+
+        if thumbnail_image is not None:
+            self._thumbnail_image = thumbnail_image
+            self.thumbnail_label.configure(image=self._thumbnail_image)
 
     def _on_download_clicked(self):
         job = self._build_job_from_inputs()
