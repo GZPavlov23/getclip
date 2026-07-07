@@ -7,6 +7,7 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 
 from getclip.core.config import APP_NAME, DEFAULT_OUTPUT_DIR
+from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder, send_notification
 from getclip.core.models import DownloadJob, MediaFormat, Quality, QueueItem, QueueStatus
 from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
 from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder
@@ -359,6 +360,7 @@ class GetClipApp:
         self.show_in_finder_btn.configure(state=NORMAL)
         self.copy_path_btn.configure(state=NORMAL)
         self._set_busy(False)
+        send_notification("GetClip", f"Finished: {label}")
 
     def _on_single_download_failed(self, error_message: str):
         self.status_var.set("Error")
@@ -499,8 +501,10 @@ class GetClipApp:
             self.status_var.set(f"Queue finished with {len(failed)} error(s)")
             names = "\n".join(item.label for item in failed)
             tb.dialogs.Messagebox.show_error(f"These failed to download:\n\n{names}", "Some downloads failed")
+            send_notification("GetClip", f"Queue finished with {len(failed)} error(s)")
         else:
             self.status_var.set("Queue finished")
+            send_notification("GetClip", "Queue finished — all downloads complete")
 
 
 def main():
