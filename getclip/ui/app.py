@@ -1,5 +1,7 @@
 import os
 import threading
+import sys
+from tkinter import filedialog
 
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
@@ -13,28 +15,37 @@ from getclip.ui.thumbnail import load_thumbnail
 PREVIEW_DEBOUNCE_MS = 700
 
 
+def _resource_path(relative_path: str) -> str:
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), relative_path)
+
 class GetClipApp:
     def __init__(self, root: tb.Window):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("800x780")
-        self.root.minsize(760, 740)
+        self.root.geometry("820x820")
+        self.root.minsize(780, 780)
 
         self.url_var = tb.StringVar()
         self.hint_var = tb.StringVar(value="")
         self.preview_title_var = tb.StringVar(value="")
+        self.preview_meta_var = tb.StringVar(value="")
         self.format_var = tb.StringVar(value=MediaFormat.MP4.value)
         self.quality_var = tb.StringVar(value=Quality.BEST.value)
         self.trim_var = tb.BooleanVar(value=False)
-        self.start_var = tb.StringVar()
-        self.end_var = tb.StringVar()
+        self.start_h = tb.IntVar(value=0)
+        self.start_m = tb.IntVar(value=0)
+        self.start_s = tb.IntVar(value=0)
+        self.end_h = tb.IntVar(value=0)
+        self.end_m = tb.IntVar(value=0)
+        self.end_s = tb.IntVar(value=0)
         self.output_dir_var = tb.StringVar(value=DEFAULT_OUTPUT_DIR)
         self.status_var = tb.StringVar(value="Idle")
 
         self._debounce_id = None
         self._thumbnail_image = None
         self.queue: list[QueueItem] = []
-        self._queue_running = False
         self._busy = False
 
         self._build_layout()
@@ -60,28 +71,45 @@ class GetClipApp:
         self._build_queue_card(body)
         self._build_footer()
 
+    # ---------- shared row helper ----------
+
+    def _row(self, parent, row, label_text, field):
+        tb.Label(parent, text=label_text).grid(row=row, column=0, sticky=W, padx=(0, 14), pady=6)
+        field.grid(row=row, column=1, sticky=EW, pady=6)
+        parent.columnconfigure(1, weight=1)
+
+    # ---------- preview card ----------
+
     def _build_preview_card(self, parent):
-        card = tb.Frame(parent, padding=(0, 0, 0, 10))
-        card.grid(row=0, column=0, columnspan=2, sticky=NSEW)
+        card = tb.Labelframe(parent, text="Preview", padding=16, bootstyle=SECONDARY)
+        card.grid(row=0, column=0, columnspan=2, sticky=NSEW, pady=(0, 14))
 
         self.thumbnail_label = tb.Label(card)
-        self.thumbnail_label.pack(side=LEFT, padx=(0, 12))
+        self.thumbnail_label.pack(side=LEFT, padx=(0, 16))
+
+        text_col = tb.Frame(card)
+        text_col.pack(side=LEFT, anchor=W, fill=X, expand=YES)
 
         tb.Label(
-            card, textvariable=self.preview_title_var, font=("", 11), wraplength=380, justify=LEFT,
-        ).pack(side=LEFT, anchor=W)
+            text_col, textvariable=self.preview_title_var, font=("", 12, "bold"),
+            wraplength=420, justify=LEFT,
+        ).pack(anchor=W)
+        tb.Label(
+            text_col, textvariable=self.preview_meta_var, bootstyle=SECONDARY,
+        ).pack(anchor=W, pady=(4, 0))
+        tb.Label(
+            text_col, textvariable=self.hint_var, bootstyle="info",
+        ).pack(anchor=W, pady=(8, 0))
+
+    # ---------- source card ----------
 
     def _build_source_card(self, parent):
         card = tb.Labelframe(parent, text="Source", padding=16, bootstyle=SECONDARY)
         card.grid(row=1, column=0, sticky=NSEW, padx=(0, 10))
 
-        tb.Label(card, text="URL").pack(anchor=W)
-        tb.Entry(card, textvariable=self.url_var).pack(fill=X, pady=(4, 6))
-        tb.Label(card, textvariable=self.hint_var, bootstyle="info").pack(anchor=W, pady=(0, 16))
+        self._row(card, 0, "URL", tb.Entry(card, textvariable=self.url_var))
 
-        tb.Label(card, text="Format").pack(anchor=W)
         format_row = tb.Frame(card)
-        format_row.pack(fill=X, pady=(4, 16))
         tb.Radiobutton(
             format_row, text="MP4", variable=self.format_var,
             value=MediaFormat.MP4.value, bootstyle="toolbutton",
@@ -90,17 +118,20 @@ class GetClipApp:
             format_row, text="MP3", variable=self.format_var,
             value=MediaFormat.MP3.value, bootstyle="toolbutton",
         ).pack(side=LEFT)
+        self._row(card, 1, "Format", format_row)
 
-        tb.Label(card, text="Quality").pack(anchor=W)
-        tb.Combobox(
+        quality_combo = tb.Combobox(
             card, textvariable=self.quality_var, state="readonly",
             values=[q.value for q in Quality],
-        ).pack(fill=X, pady=(4, 16))
+        )
+        self._row(card, 2, "Quality", quality_combo)
 
         self.add_queue_btn = tb.Button(
             card, text="+ Add to queue instead", bootstyle="link", command=self._add_to_queue,
         )
-        self.add_queue_btn.pack(anchor=W)
+        self.add_queue_btn.grid(row=3, column=0, columnspan=2, sticky=W, pady=(10, 0))
+
+    # ---------- trim & save card ----------
 
     def _build_trim_card(self, parent):
         card = tb.Labelframe(parent, text="Trim & Save", padding=16, bootstyle=SECONDARY)
@@ -109,22 +140,28 @@ class GetClipApp:
         tb.Checkbutton(
             card, text="Trim to timestamp range", variable=self.trim_var,
             bootstyle="round-toggle",
-        ).pack(anchor=W, pady=(0, 14))
+        ).grid(row=0, column=0, columnspan=2, sticky=W, pady=(0, 12))
 
-        time_row = tb.Frame(card)
-        time_row.pack(fill=X, pady=(0, 16))
-        tb.Label(time_row, text="Start").pack(side=LEFT)
-        tb.Entry(time_row, textvariable=self.start_var, width=9).pack(side=LEFT, padx=(6, 16))
-        tb.Label(time_row, text="End").pack(side=LEFT)
-        tb.Entry(time_row, textvariable=self.end_var, width=9).pack(side=LEFT, padx=6)
+        self._row(card, 1, "From", self._time_picker(card, self.start_h, self.start_m, self.start_s))
+        self._row(card, 2, "To", self._time_picker(card, self.end_h, self.end_m, self.end_s))
 
-        tb.Label(card, text="Save to").pack(anchor=W)
-        out_row = tb.Frame(card)
-        out_row.pack(fill=X, pady=(4, 0))
-        tb.Entry(out_row, textvariable=self.output_dir_var).pack(side=LEFT, fill=X, expand=YES, padx=(0, 6))
+        save_row = tb.Frame(card)
+        tb.Entry(save_row, textvariable=self.output_dir_var).pack(side=LEFT, fill=X, expand=YES, padx=(0, 6))
         tb.Button(
-            out_row, text="Browse", command=self._choose_output_dir, bootstyle="secondary-outline",
+            save_row, text="Browse", command=self._choose_output_dir, bootstyle="secondary-outline",
         ).pack(side=LEFT)
+        self._row(card, 3, "Save to", save_row)
+
+    def _time_picker(self, parent, h_var, m_var, s_var):
+        row = tb.Frame(parent)
+        tb.Spinbox(row, from_=0, to=99, textvariable=h_var, width=3, wrap=True).pack(side=LEFT)
+        tb.Label(row, text=":").pack(side=LEFT, padx=4)
+        tb.Spinbox(row, from_=0, to=59, textvariable=m_var, width=3, wrap=True).pack(side=LEFT)
+        tb.Label(row, text=":").pack(side=LEFT, padx=4)
+        tb.Spinbox(row, from_=0, to=59, textvariable=s_var, width=3, wrap=True).pack(side=LEFT)
+        return row
+
+    # ---------- queue card ----------
 
     def _build_queue_card(self, parent):
         card = tb.Labelframe(parent, text="Queue (optional — for batches)", padding=16, bootstyle=SECONDARY)
@@ -152,6 +189,8 @@ class GetClipApp:
         )
         self.start_queue_btn.grid(row=1, column=0, sticky=EW, ipady=4)
 
+    # ---------- footer ----------
+
     def _build_footer(self):
         footer = tb.Frame(self.root, padding=24)
         footer.pack(fill=X, side=BOTTOM)
@@ -166,8 +205,10 @@ class GetClipApp:
 
         tb.Label(footer, textvariable=self.status_var, bootstyle=SECONDARY).pack(anchor=W)
 
+    # ---------- behavior (unchanged from before, aside from time handling) ----------
+
     def _choose_output_dir(self):
-        chosen = tb.filedialog.askdirectory()
+        chosen = filedialog.askdirectory()
         if chosen:
             self.output_dir_var.set(chosen)
 
@@ -179,6 +220,7 @@ class GetClipApp:
             self.root.after_cancel(self._debounce_id)
 
         self.preview_title_var.set("")
+        self.preview_meta_var.set("")
         self.thumbnail_label.configure(image="")
 
         url = self.url_var.get().strip()
@@ -197,20 +239,33 @@ class GetClipApp:
             preview = fetch_preview(url)
             thumbnail_image = None
             if preview.thumbnail_url:
-                thumbnail_image = load_thumbnail(preview.thumbnail_url, max_width=180)
-            self.root.after(0, lambda: self._show_preview(preview.title, thumbnail_image))
+                thumbnail_image = load_thumbnail(preview.thumbnail_url, max_width=200)
+            meta = self._format_duration(preview.duration_seconds)
+            self.root.after(0, lambda: self._show_preview(preview.title, meta, thumbnail_image))
         except Exception:
             self.root.after(0, lambda: self.preview_title_var.set(""))
 
-    def _show_preview(self, title: str, thumbnail_image):
+    def _show_preview(self, title: str, meta: str, thumbnail_image):
         if self.url_var.get().strip() == "":
             return
 
         self.preview_title_var.set(title)
+        self.preview_meta_var.set(meta)
 
         if thumbnail_image is not None:
             self._thumbnail_image = thumbnail_image
             self.thumbnail_label.configure(image=self._thumbnail_image)
+
+    @staticmethod
+    def _format_duration(seconds) -> str:
+        if not seconds:
+            return ""
+        seconds = int(seconds)
+        h, remainder = divmod(seconds, 3600)
+        m, s = divmod(remainder, 60)
+        if h:
+            return f"Duration: {h}:{m:02d}:{s:02d}"
+        return f"Duration: {m}:{s:02d}"
 
     def _add_to_queue(self):
         job = self._build_job_from_inputs()
@@ -304,10 +359,10 @@ class GetClipApp:
         start_seconds = None
         end_seconds = None
         if self.trim_var.get():
-            start_seconds = self._parse_time(self.start_var.get())
-            end_seconds = self._parse_time(self.end_var.get())
-            if start_seconds is None or end_seconds is None:
-                tb.dialogs.Messagebox.show_error("Enter both a start and end time.", "Missing timestamps")
+            start_seconds = self.start_h.get() * 3600 + self.start_m.get() * 60 + self.start_s.get()
+            end_seconds = self.end_h.get() * 3600 + self.end_m.get() * 60 + self.end_s.get()
+            if end_seconds <= start_seconds:
+                tb.dialogs.Messagebox.show_error("End time must be after start time.", "Invalid range")
                 return None
 
         return DownloadJob(
@@ -318,19 +373,6 @@ class GetClipApp:
             start_seconds=start_seconds,
             end_seconds=end_seconds,
         )
-
-    @staticmethod
-    def _parse_time(value: str) -> int | None:
-        value = value.strip()
-        if not value:
-            return None
-        if value.isdigit():
-            return int(value)
-        parts = [int(p) for p in value.split(":")]
-        seconds = 0
-        for part in parts:
-            seconds = seconds * 60 + part
-        return seconds
 
     def _start_queue(self):
         if self._busy:
@@ -413,7 +455,10 @@ class GetClipApp:
 
 def main():
     root = tb.Window(themename="darkly")
-    GetClipApp(root)
+    icon_image = tb.PhotoImage(file=_resource_path("assets/icon.png"))
+    root.iconphoto(True, icon_image)
+    app = GetClipApp(root)
+    app._icon_ref = icon_image
     root.mainloop()
 
 
