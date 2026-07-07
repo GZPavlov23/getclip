@@ -1,6 +1,6 @@
 import os
-import threading
 import sys
+import threading
 from tkinter import filedialog
 
 import ttkbootstrap as tb
@@ -9,7 +9,7 @@ from ttkbootstrap.constants import *
 from getclip.core.config import APP_NAME, DEFAULT_OUTPUT_DIR
 from getclip.core.models import DownloadJob, MediaFormat, Quality, QueueItem, QueueStatus
 from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
-from getclip.services.downloader import run_download, fetch_preview
+from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder
 from getclip.ui.thumbnail import load_thumbnail
 
 PREVIEW_DEBOUNCE_MS = 700
@@ -20,6 +20,7 @@ def _resource_path(relative_path: str) -> str:
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), relative_path)
 
+
 class GetClipApp:
     def __init__(self, root: tb.Window):
         self.root = root
@@ -29,6 +30,7 @@ class GetClipApp:
 
         self.url_var = tb.StringVar()
         self.hint_var = tb.StringVar(value="")
+        self._last_downloaded_path = None
         self.preview_title_var = tb.StringVar(value="")
         self.preview_meta_var = tb.StringVar(value="")
         self.format_var = tb.StringVar(value=MediaFormat.MP4.value)
@@ -203,9 +205,17 @@ class GetClipApp:
         self.progress = tb.Progressbar(footer, mode="determinate", maximum=100, bootstyle="info-striped")
         self.progress.pack(fill=X, pady=(0, 6))
 
-        tb.Label(footer, textvariable=self.status_var, bootstyle=SECONDARY).pack(anchor=W)
+        bottom_row = tb.Frame(footer)
+        bottom_row.pack(fill=X)
+        tb.Label(bottom_row, textvariable=self.status_var, bootstyle=SECONDARY).pack(side=LEFT)
 
-    # ---------- behavior (unchanged from before, aside from time handling) ----------
+        self.show_in_finder_btn = tb.Button(
+            bottom_row, text="Show in Finder", bootstyle="link", state=DISABLED,
+            command=self._show_last_in_finder,
+        )
+        self.show_in_finder_btn.pack(side=RIGHT)
+
+    # ---------- behavior ----------
 
     def _choose_output_dir(self):
         chosen = filedialog.askdirectory()
@@ -289,6 +299,7 @@ class GetClipApp:
         self.url_var.set("")
 
         self._set_busy(True)
+        self.show_in_finder_btn.configure(state=DISABLED)
         self.status_var.set(f"Starting: {label}")
         self.progress["value"] = 0
 
@@ -297,8 +308,8 @@ class GetClipApp:
 
     def _run_single_download(self, job: DownloadJob, label: str):
         try:
-            run_download(job, on_progress=lambda d: self._handle_single_progress(label, d))
-            self.root.after(0, lambda: self._on_single_download_finished(label))
+            path = run_download(job, on_progress=lambda d: self._handle_single_progress(label, d))
+            self.root.after(0, lambda: self._on_single_download_finished(label, path))
         except Exception as e:
             self.root.after(0, lambda: self._on_single_download_failed(str(e)))
 
@@ -317,15 +328,21 @@ class GetClipApp:
         self.progress["value"] = percent
         self.status_var.set(f"{label} — {percent:.0f}%")
 
-    def _on_single_download_finished(self, label: str):
+    def _on_single_download_finished(self, label: str, path: str):
         self.progress["value"] = 100
         self.status_var.set(f"Done: {label}")
+        self._last_downloaded_path = path
+        self.show_in_finder_btn.configure(state=NORMAL)
         self._set_busy(False)
 
     def _on_single_download_failed(self, error_message: str):
         self.status_var.set("Error")
         self._set_busy(False)
         tb.dialogs.Messagebox.show_error(error_message, "Download failed")
+
+    def _show_last_in_finder(self):
+        if self._last_downloaded_path:
+            reveal_in_finder(self._last_downloaded_path)
 
     def _set_busy(self, busy: bool):
         self._busy = busy

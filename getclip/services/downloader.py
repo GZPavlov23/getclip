@@ -1,3 +1,4 @@
+import os
 from typing import Callable, Optional
 
 import yt_dlp
@@ -40,12 +41,17 @@ def _pick_thumbnail_url(info: dict, target_width: int) -> str | None:
 
     return sized[-1]["url"]
 
-def run_download(job: DownloadJob, on_progress: Optional[ProgressCallback] = None) -> None:
+def run_download(job: DownloadJob, on_progress: Optional[ProgressCallback] = None) -> str:
     ydl_opts = _build_ydl_options(job, on_progress)
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([job.url])
+        info = ydl.extract_info(job.url, download=True)
+        filename = ydl.prepare_filename(info)
 
+    if job.media_format == MediaFormat.MP3:
+        filename = os.path.splitext(filename)[0] + ".mp3"
+
+    return filename
 
 def _build_ydl_options(job: DownloadJob, on_progress: Optional[ProgressCallback]) -> dict:
     options = {
@@ -86,3 +92,9 @@ def _video_format_string(job: DownloadJob) -> str:
         return "bestvideo+bestaudio/best"
 
     return f"bestvideo[height<={height}]+bestaudio/best[height<={height}]"
+
+import subprocess
+
+
+def reveal_in_finder(path: str) -> None:
+    subprocess.run(["open", "-R", path])
