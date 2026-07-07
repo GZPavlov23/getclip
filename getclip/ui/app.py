@@ -1,3 +1,4 @@
+import datetime
 import os
 import sys
 import threading
@@ -7,12 +8,11 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 
 from getclip.core.config import APP_NAME, DEFAULT_OUTPUT_DIR
-from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder, send_notification
 from getclip.core.models import DownloadJob, MediaFormat, Quality, QueueItem, QueueStatus
+from getclip.core.settings import load_settings, save_settings, add_recent_folder, add_history_entry, clear_history
 from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
-from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder
+from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder, send_notification
 from getclip.ui.thumbnail import load_thumbnail
-from getclip.core.settings import load_settings, add_recent_folder
 
 PREVIEW_DEBOUNCE_MS = 700
 
@@ -27,8 +27,10 @@ class GetClipApp:
     def __init__(self, root: tb.Window):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("820x900")
-        self.root.minsize(780, 860)
+        self.root.geometry("820x860")
+        self.root.minsize(780, 820)
+
+        self._settings = load_settings()
 
         self.url_var = tb.StringVar()
         self.hint_var = tb.StringVar(value="")
@@ -44,11 +46,12 @@ class GetClipApp:
         self.end_h = tb.IntVar(value=0)
         self.end_m = tb.IntVar(value=0)
         self.end_s = tb.IntVar(value=0)
-        self._settings = load_settings()
+
         initial_folder = self._settings["recent_folders"][0] if self._settings["recent_folders"] else DEFAULT_OUTPUT_DIR
         self.output_dir_var = tb.StringVar(value=initial_folder)
         self.filename_template_var = tb.StringVar(value="{title}")
         self.status_var = tb.StringVar(value="Idle")
+        self.dark_mode_var = tb.BooleanVar(value=self._settings.get("theme", "darkly") != "flatly")
 
         self._debounce_id = None
         self._thumbnail_image = None
@@ -68,16 +71,30 @@ class GetClipApp:
 
         self._build_footer()
 
-        body = tb.Frame(self.root, padding=(24, 10, 24, 0))
-        body.pack(fill=BOTH, expand=YES)
-        body.columnconfigure(0, weight=1)
-        body.columnconfigure(1, weight=1)
-        body.rowconfigure(2, weight=1)
+        notebook = tb.Notebook(self.root, padding=(24, 10, 24, 10))
+        notebook.pack(fill=BOTH, expand=YES)
 
-        self._build_preview_card(body)
-        self._build_source_card(body)
-        self._build_trim_card(body)
-        self._build_queue_card(body)
+        download_tab = tb.Frame(notebook)
+        queue_tab = tb.Frame(notebook)
+        history_tab = tb.Frame(notebook)
+        settings_tab = tb.Frame(notebook)
+
+        notebook.add(download_tab, text="Download")
+        notebook.add(queue_tab, text="Queue")
+        notebook.add(history_tab, text="History")
+        notebook.add(settings_tab, text="Settings")
+
+        download_tab.columnconfigure(0, weight=1)
+        download_tab.columnconfigure(1, weight=1)
+
+        self._build_preview_card(download_tab)
+        self._build_source_card(download_tab)
+        self._build_trim_card(download_tab)
+
+        self._build_queue_tab(queue_tab)
+        self._build_history_tab(history_tab)
+        self._build_settings_tab(settings_tab)
+
     # ---------- shared row helper ----------
 
     def _row(self, parent, row, label_text, field):
@@ -85,7 +102,7 @@ class GetClipApp:
         field.grid(row=row, column=1, sticky=EW, pady=6)
         parent.columnconfigure(1, weight=1)
 
-    # ---------- preview card ----------
+    # ---------- download tab: preview card ----------
 
     def _build_preview_card(self, parent):
         card = tb.Labelframe(parent, text="Preview", padding=16, bootstyle=SECONDARY)
@@ -108,7 +125,7 @@ class GetClipApp:
             text_col, textvariable=self.hint_var, bootstyle="info",
         ).pack(anchor=W, pady=(8, 0))
 
-    # ---------- source card ----------
+    # ---------- download tab: source card ----------
 
     def _build_source_card(self, parent):
         card = tb.Labelframe(parent, text="Source", padding=16, bootstyle=SECONDARY)
@@ -138,7 +155,7 @@ class GetClipApp:
         )
         self.add_queue_btn.grid(row=3, column=0, columnspan=2, sticky=W, pady=(10, 0))
 
-    # ---------- trim & save card ----------
+    # ---------- download tab: trim & save card ----------
 
     def _build_trim_card(self, parent):
         card = tb.Labelframe(parent, text="Trim & Save", padding=16, bootstyle=SECONDARY)
@@ -177,21 +194,19 @@ class GetClipApp:
         tb.Spinbox(row, from_=0, to=59, textvariable=s_var, width=3, wrap=True).pack(side=LEFT)
         return row
 
-    # ---------- queue card ----------
+    # ---------- queue tab ----------
 
-    def _build_queue_card(self, parent):
-        card = tb.Labelframe(parent, text="Queue (optional — for batches)", padding=16, bootstyle=SECONDARY)
-        card.grid(row=2, column=0, columnspan=2, sticky=NSEW, pady=(16, 0))
-        card.rowconfigure(0, weight=1)
-        card.columnconfigure(0, weight=1)
+    def _build_queue_tab(self, parent):
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
 
         self.queue_tree = tb.Treeview(
-            card, columns=("label", "format", "status"), show="headings", height=4,
+            parent, columns=("label", "format", "status"), show="headings",
         )
         self.queue_tree.heading("label", text="Video")
         self.queue_tree.heading("format", text="Format")
         self.queue_tree.heading("status", text="Status")
-        self.queue_tree.column("label", width=380)
+        self.queue_tree.column("label", width=420)
         self.queue_tree.column("format", width=80, anchor=CENTER)
         self.queue_tree.column("status", width=120, anchor=CENTER)
         self.queue_tree.grid(row=0, column=0, sticky=NSEW, pady=(0, 12))
@@ -201,9 +216,86 @@ class GetClipApp:
         self.queue_tree.tag_configure("failed", foreground="#e0555b")
 
         self.start_queue_btn = tb.Button(
-            card, text="Start Queue", bootstyle="secondary-outline", command=self._start_queue,
+            parent, text="Start Queue", bootstyle=SUCCESS, command=self._start_queue,
         )
         self.start_queue_btn.grid(row=1, column=0, sticky=EW, ipady=4)
+
+    # ---------- history tab ----------
+
+    def _build_history_tab(self, parent):
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
+
+        self.history_tree = tb.Treeview(
+            parent, columns=("title", "format", "date"), show="headings",
+        )
+        self.history_tree.heading("title", text="Video")
+        self.history_tree.heading("format", text="Format")
+        self.history_tree.heading("date", text="Downloaded")
+        self.history_tree.column("title", width=380)
+        self.history_tree.column("format", width=80, anchor=CENTER)
+        self.history_tree.column("date", width=160, anchor=CENTER)
+        self.history_tree.grid(row=0, column=0, sticky=NSEW, pady=(0, 12))
+
+        tb.Button(
+            parent, text="Clear History", bootstyle="danger-outline", command=self._clear_history,
+        ).grid(row=1, column=0, sticky=W)
+
+        self._refresh_history_view()
+
+    def _refresh_history_view(self):
+        self.history_tree.delete(*self.history_tree.get_children())
+        settings = load_settings()
+        for entry in settings.get("history", []):
+            self.history_tree.insert("", END, values=(entry["title"], entry["format"], entry["date"]))
+
+    def _clear_history(self):
+        clear_history()
+        self._refresh_history_view()
+
+    # ---------- settings tab ----------
+
+    def _build_settings_tab(self, parent):
+        tb.Label(parent, text="Appearance", font=("", 11, "bold")).pack(anchor=W, pady=(0, 8))
+        tb.Checkbutton(
+            parent, text="Dark mode", variable=self.dark_mode_var,
+            bootstyle="round-toggle", command=self._toggle_theme,
+        ).pack(anchor=W, pady=(0, 24))
+
+        tb.Label(parent, text="Recent Folders", font=("", 11, "bold")).pack(anchor=W, pady=(0, 8))
+        self.settings_folders_list = tb.Treeview(
+            parent, columns=("folder",), show="headings", height=5,
+        )
+        self.settings_folders_list.heading("folder", text="Folder")
+        self.settings_folders_list.column("folder", width=460)
+        self.settings_folders_list.pack(fill=X, pady=(0, 8))
+
+        tb.Button(
+            parent, text="Clear Recent Folders", bootstyle="danger-outline",
+            command=self._clear_recent_folders,
+        ).pack(anchor=W)
+
+        self._refresh_settings_folders()
+
+    def _refresh_settings_folders(self):
+        self.settings_folders_list.delete(*self.settings_folders_list.get_children())
+        settings = load_settings()
+        for folder in settings.get("recent_folders", []):
+            self.settings_folders_list.insert("", END, values=(folder,))
+
+    def _clear_recent_folders(self):
+        settings = load_settings()
+        settings["recent_folders"] = []
+        save_settings(settings)
+        self.recent_folders_combo.configure(values=[])
+        self._refresh_settings_folders()
+
+    def _toggle_theme(self):
+        theme = "darkly" if self.dark_mode_var.get() else "flatly"
+        self.root.style.theme_use(theme)
+        settings = load_settings()
+        settings["theme"] = theme
+        save_settings(settings)
 
     # ---------- footer ----------
 
@@ -246,6 +338,7 @@ class GetClipApp:
     def _update_recent_folders(self, folder: str):
         recent = add_recent_folder(folder)
         self.recent_folders_combo.configure(values=recent)
+        self._refresh_settings_folders()
 
     def _on_url_changed(self, *args):
         source = detect_source_type(self.url_var.get())
@@ -327,6 +420,7 @@ class GetClipApp:
         self.show_in_finder_btn.configure(state=DISABLED)
         self.copy_path_btn.configure(state=DISABLED)
         self.status_var.set(f"Starting: {label}")
+        self.progress["value"] = 0
 
         thread = threading.Thread(target=self._run_single_download, args=(job, label), daemon=True)
         thread.start()
@@ -361,6 +455,12 @@ class GetClipApp:
         self.copy_path_btn.configure(state=NORMAL)
         self._set_busy(False)
         send_notification("GetClip", f"Finished: {label}")
+        add_history_entry({
+            "title": label,
+            "format": self.format_var.get().upper(),
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        })
+        self._refresh_history_view()
 
     def _on_single_download_failed(self, error_message: str):
         self.status_var.set("Error")
@@ -486,6 +586,12 @@ class GetClipApp:
     def _mark_item_done(self, item: QueueItem):
         item.status = QueueStatus.DONE
         self._refresh_queue_view()
+        add_history_entry({
+            "title": item.label,
+            "format": item.job.media_format.value.upper(),
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        })
+        self._refresh_history_view()
 
     def _mark_item_failed(self, item: QueueItem, error: str):
         item.status = QueueStatus.FAILED
@@ -508,7 +614,7 @@ class GetClipApp:
 
 
 def main():
-    root = tb.Window(themename="darkly")
+    root = tb.Window(themename=load_settings().get("theme", "darkly"))
     icon_image = tb.PhotoImage(file=_resource_path("assets/icon.png"))
     root.iconphoto(True, icon_image)
     app = GetClipApp(root)

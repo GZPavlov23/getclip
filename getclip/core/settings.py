@@ -1,14 +1,16 @@
 import json
-import os
 from pathlib import Path
 
 SETTINGS_DIR = Path.home() / "Library" / "Application Support" / "GetClip"
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 
 MAX_RECENT_FOLDERS = 5
+MAX_HISTORY_ITEMS = 200
 
 DEFAULT_SETTINGS = {
     "recent_folders": [],
+    "history": [],
+    "theme": "darkly",
 }
 
 
@@ -41,3 +43,21 @@ def add_recent_folder(folder: str) -> list[str]:
     settings["recent_folders"] = recent
     save_settings(settings)
     return recent
+
+
+def add_history_entry(entry: dict) -> list[dict]:
+    settings = load_settings()
+    history = settings.get("history", [])
+
+    history.insert(0, entry)
+    history = history[:MAX_HISTORY_ITEMS]
+
+    settings["history"] = history
+    save_settings(settings)
+    return history
+
+
+def clear_history() -> None:
+    settings = load_settings()
+    settings["history"] = []
+    save_settings(settings)
