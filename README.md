@@ -1,6 +1,6 @@
 # GetClip
 
-A simple desktop app for downloading YouTube videos and Twitch clips/VODs as MP4 or MP3 — with optional timestamp trimming, a live preview before you download, and a batch queue for grabbing multiple videos at once.
+A simple desktop app for downloading YouTube videos and Twitch clips/VODs as MP4 or MP3 — with optional timestamp trimming, a live preview before you download, custom filename templates, and a batch queue for grabbing multiple videos at once.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -20,11 +20,16 @@ Grab the latest build from the [Releases page](https://github.com/GZPavlov23/get
 ## Features
 
 - **YouTube videos and Twitch clips/VODs** — auto-detected from the pasted URL, with a contextual hint (e.g. trimming recommended for long VODs)
-- **Live preview** — see the title and thumbnail before committing to a download
+- **Live preview** — see the title, thumbnail, and duration before committing to a download
 - **MP4 or MP3** output, with quality options for video
-- **Timestamp trimming** — grab just the section you need instead of the whole video
+- **Timestamp trimming** — grab just the section you need, using precise H:M:S spinners
+- **Custom filename templates** — save files as `{date}_{title}`, `{channel}_{title}`, or any combination
+- **Recent folders** — quickly switch between your last few used save locations
 - **Batch queue** — add several videos and download them one after another
-- **Download Now** for quick one-off downloads, no queue required
+- **Download history** — a searchable log of everything you've downloaded, with double-click to reveal in Finder
+- **Native notifications** — get notified when a download or queue finishes
+- **Dark/light theme toggle**
+- **Update checker** — see if a newer version is available, right from the Settings tab
 
 ## Running from source
 
@@ -49,6 +54,12 @@ python3 main.py
 ./build.sh
 ```
 This produces `dist/GetClip.app`.
+
+### Running the tests
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest
+```
 
 ## Project structure
 
