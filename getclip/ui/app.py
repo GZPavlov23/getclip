@@ -228,6 +228,12 @@ class GetClipApp:
         )
         self.show_in_finder_btn.pack(side=RIGHT)
 
+        self.copy_path_btn = tb.Button(
+            bottom_row, text="Copy Path", bootstyle="link", state=DISABLED,
+            command=self._copy_last_path,
+        )
+        self.copy_path_btn.pack(side=RIGHT, padx=(0, 12))
+
     # ---------- behavior ----------
 
     def _choose_output_dir(self):
@@ -318,8 +324,8 @@ class GetClipApp:
 
         self._set_busy(True)
         self.show_in_finder_btn.configure(state=DISABLED)
+        self.copy_path_btn.configure(state=DISABLED)
         self.status_var.set(f"Starting: {label}")
-        self.progress["value"] = 0
 
         thread = threading.Thread(target=self._run_single_download, args=(job, label), daemon=True)
         thread.start()
@@ -351,6 +357,7 @@ class GetClipApp:
         self.status_var.set(f"Done: {label}")
         self._last_downloaded_path = path
         self.show_in_finder_btn.configure(state=NORMAL)
+        self.copy_path_btn.configure(state=NORMAL)
         self._set_busy(False)
 
     def _on_single_download_failed(self, error_message: str):
@@ -361,6 +368,12 @@ class GetClipApp:
     def _show_last_in_finder(self):
         if self._last_downloaded_path:
             reveal_in_finder(self._last_downloaded_path)
+
+    def _copy_last_path(self):
+        if self._last_downloaded_path:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self._last_downloaded_path)
+            self.status_var.set("Path copied to clipboard")
 
     def _set_busy(self, busy: bool):
         self._busy = busy
