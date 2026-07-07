@@ -7,11 +7,12 @@ from tkinter import filedialog
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 
-from getclip.core.config import APP_NAME, DEFAULT_OUTPUT_DIR
+from getclip.core.config import APP_NAME, APP_VERSION, DEFAULT_OUTPUT_DIR
 from getclip.core.models import DownloadJob, MediaFormat, Quality, QueueItem, QueueStatus
 from getclip.core.settings import load_settings, save_settings, add_recent_folder, add_history_entry, clear_history
 from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
 from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder, send_notification
+from getclip.services.updater import check_for_update
 from getclip.ui.thumbnail import load_thumbnail
 
 PREVIEW_DEBOUNCE_MS = 700
@@ -52,6 +53,8 @@ class GetClipApp:
         self.filename_template_var = tb.StringVar(value="{title}")
         self.status_var = tb.StringVar(value="Idle")
         self.dark_mode_var = tb.BooleanVar(value=self._settings.get("theme", "darkly") != "flatly")
+        self.update_status_var = tb.StringVar(value="")
+        self.history_search_var = tb.StringVar()
 
         self._debounce_id = None
         self._thumbnail_image = None
@@ -60,6 +63,7 @@ class GetClipApp:
 
         self._build_layout()
         self.url_var.trace_add("write", self._on_url_changed)
+        self.history_search_var.trace_add("write", self._on_history_search_changed)
 
     def _build_layout(self):
         header = tb.Frame(self.root, padding=(24, 20, 24, 10))
@@ -223,11 +227,16 @@ class GetClipApp:
     # ---------- history tab ----------
 
     def _build_history_tab(self, parent):
-        parent.rowconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
         parent.columnconfigure(0, weight=1)
 
+        tb.Entry(
+            parent, textvariable=self.history_search_var,
+        ).grid(row=0, column=0, sticky=EW, pady=(0, 8))
+
         self.history_tree = tb.Treeview(
-            parent, columns=("title", "format", "date"), show="headings",
+            parent, columns=("title", "format", "date", "path"),
+            displaycolumns=("title", "format", "date"), show="headings",
         )
         self.history_tree.heading("title", text="Video")
         self.history_tree.heading("format", text="Format")
@@ -235,19 +244,40 @@ class GetClipApp:
         self.history_tree.column("title", width=380)
         self.history_tree.column("format", width=80, anchor=CENTER)
         self.history_tree.column("date", width=160, anchor=CENTER)
-        self.history_tree.grid(row=0, column=0, sticky=NSEW, pady=(0, 12))
+        self.history_tree.grid(row=1, column=0, sticky=NSEW, pady=(0, 12))
+        self.history_tree.bind("<Double-1>", self._on_history_row_double_click)
 
         tb.Button(
             parent, text="Clear History", bootstyle="danger-outline", command=self._clear_history,
-        ).grid(row=1, column=0, sticky=W)
+        ).grid(row=2, column=0, sticky=W)
 
         self._refresh_history_view()
 
-    def _refresh_history_view(self):
+    def _on_history_search_changed(self, *args):
+        self._refresh_history_view(self.history_search_var.get())
+
+    def _refresh_history_view(self, filter_text: str = ""):
         self.history_tree.delete(*self.history_tree.get_children())
         settings = load_settings()
+        filter_text = filter_text.strip().lower()
         for entry in settings.get("history", []):
-            self.history_tree.insert("", END, values=(entry["title"], entry["format"], entry["date"]))
+            if filter_text and filter_text not in entry["title"].lower():
+                continue
+            self.history_tree.insert(
+                "", END,
+                values=(entry["title"], entry["format"], entry["date"], entry.get("path", "")),
+            )
+
+    def _on_history_row_double_click(self, event):
+        selected = self.history_tree.selection()
+        if not selected:
+            return
+        values = self.history_tree.item(selected[0], "values")
+        path = values[3] if len(values) > 3 else ""
+        if path:
+            reveal_in_finder(path)
+        else:
+            tb.dialogs.Messagebox.show_info("This entry doesn't have a saved file path.", "Not available")
 
     def _clear_history(self):
         clear_history()
@@ -273,7 +303,16 @@ class GetClipApp:
         tb.Button(
             parent, text="Clear Recent Folders", bootstyle="danger-outline",
             command=self._clear_recent_folders,
-        ).pack(anchor=W)
+        ).pack(anchor=W, pady=(0, 24))
+
+        tb.Label(parent, text="About", font=("", 11, "bold")).pack(anchor=W, pady=(0, 8))
+        tb.Label(parent, text=f"GetClip v{APP_VERSION}", bootstyle=SECONDARY).pack(anchor=W)
+
+        tb.Button(
+            parent, text="Check for Updates", bootstyle="secondary-outline",
+            command=self._check_for_updates,
+        ).pack(anchor=W, pady=(8, 4))
+        tb.Label(parent, textvariable=self.update_status_var, bootstyle="info", wraplength=420, justify=LEFT).pack(anchor=W)
 
         self._refresh_settings_folders()
 
@@ -296,6 +335,24 @@ class GetClipApp:
         settings = load_settings()
         settings["theme"] = theme
         save_settings(settings)
+
+    def _check_for_updates(self):
+        self.update_status_var.set("Checking...")
+        thread = threading.Thread(target=self._check_for_updates_in_background, daemon=True)
+        thread.start()
+
+    def _check_for_updates_in_background(self):
+        try:
+            is_newer, latest_version, release_url = check_for_update(APP_VERSION)
+            self.root.after(0, lambda: self._show_update_result(is_newer, latest_version, release_url))
+        except Exception:
+            self.root.after(0, lambda: self.update_status_var.set("Couldn't check for updates."))
+
+    def _show_update_result(self, is_newer: bool, latest_version: str, release_url: str):
+        if is_newer:
+            self.update_status_var.set(f"New version available: v{latest_version} — {release_url}")
+        else:
+            self.update_status_var.set("You're up to date.")
 
     # ---------- footer ----------
 
@@ -459,8 +516,9 @@ class GetClipApp:
             "title": label,
             "format": self.format_var.get().upper(),
             "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "path": path,
         })
-        self._refresh_history_view()
+        self._refresh_history_view(self.history_search_var.get())
 
     def _on_single_download_failed(self, error_message: str):
         self.status_var.set("Error")
@@ -552,11 +610,11 @@ class GetClipApp:
             self.root.after(0, lambda i=item, c=completed, t=total: self._mark_item_downloading(i, c, t))
 
             try:
-                run_download(
+                path = run_download(
                     item.job,
                     on_progress=lambda d, i=item, c=completed, t=total: self._handle_queue_progress(i, c, t, d),
                 )
-                self.root.after(0, lambda i=item: self._mark_item_done(i))
+                self.root.after(0, lambda i=item, p=path: self._mark_item_done(i, p))
             except Exception as e:
                 self.root.after(0, lambda i=item, err=str(e): self._mark_item_failed(i, err))
 
@@ -583,15 +641,16 @@ class GetClipApp:
         self.progress["value"] = percent
         self.status_var.set(f"[{completed}/{total}] {label} — {percent:.0f}%")
 
-    def _mark_item_done(self, item: QueueItem):
+    def _mark_item_done(self, item: QueueItem, path: str = ""):
         item.status = QueueStatus.DONE
         self._refresh_queue_view()
         add_history_entry({
             "title": item.label,
             "format": item.job.media_format.value.upper(),
             "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "path": path,
         })
-        self._refresh_history_view()
+        self._refresh_history_view(self.history_search_var.get())
 
     def _mark_item_failed(self, item: QueueItem, error: str):
         item.status = QueueStatus.FAILED
