@@ -7,7 +7,7 @@ A simple desktop app for downloading YouTube videos and Twitch clips/VODs as MP4
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 ![Latest Release](https://img.shields.io/github/v/release/GZPavlov23/getclip)
 
-![GetClip screenshot](assets/screenshot.png)
+![GetClip screenshot](assets/screenshot1.png)
 
 ## Download
 
