@@ -23,6 +23,7 @@ class DownloadJob:
     quality: Quality = Quality.BEST
     start_seconds: Optional[int] = None
     end_seconds: Optional[int] = None
+    filename_template: str = "{title}"
 
     @property
     def is_trimmed(self) -> bool:

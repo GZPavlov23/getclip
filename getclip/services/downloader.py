@@ -5,6 +5,18 @@ import yt_dlp
 
 from getclip.core.models import DownloadJob, MediaFormat, VideoPreview
 
+PLACEHOLDER_MAP = {
+    "{title}": "%(title)s",
+    "{channel}": "%(uploader)s",
+    "{date}": "%(upload_date)s",
+}
+
+
+def build_outtmpl(output_dir: str, template: str) -> str:
+    pattern = template.strip() or "{title}"
+    for placeholder, ydl_field in PLACEHOLDER_MAP.items():
+        pattern = pattern.replace(placeholder, ydl_field)
+    return os.path.join(output_dir, f"{pattern}.%(ext)s")
 
 ProgressCallback = Callable[[dict], None]
 
@@ -55,7 +67,7 @@ def run_download(job: DownloadJob, on_progress: Optional[ProgressCallback] = Non
 
 def _build_ydl_options(job: DownloadJob, on_progress: Optional[ProgressCallback]) -> dict:
     options = {
-        "outtmpl": f"{job.output_dir}/%(title)s.%(ext)s",
+        "outtmpl": build_outtmpl(job.output_dir, job.filename_template),
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,

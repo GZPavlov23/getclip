@@ -25,8 +25,8 @@ class GetClipApp:
     def __init__(self, root: tb.Window):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("820x820")
-        self.root.minsize(780, 780)
+        self.root.geometry("820x900")
+        self.root.minsize(780, 860)
 
         self.url_var = tb.StringVar()
         self.hint_var = tb.StringVar(value="")
@@ -43,6 +43,7 @@ class GetClipApp:
         self.end_m = tb.IntVar(value=0)
         self.end_s = tb.IntVar(value=0)
         self.output_dir_var = tb.StringVar(value=DEFAULT_OUTPUT_DIR)
+        self.filename_template_var = tb.StringVar(value="{title}")
         self.status_var = tb.StringVar(value="Idle")
 
         self._debounce_id = None
@@ -61,6 +62,8 @@ class GetClipApp:
             header, text="Download YouTube & Twitch clips, fast.", bootstyle=SECONDARY,
         ).pack(anchor=W)
 
+        self._build_footer()
+
         body = tb.Frame(self.root, padding=(24, 10, 24, 0))
         body.pack(fill=BOTH, expand=YES)
         body.columnconfigure(0, weight=1)
@@ -71,8 +74,6 @@ class GetClipApp:
         self._build_source_card(body)
         self._build_trim_card(body)
         self._build_queue_card(body)
-        self._build_footer()
-
     # ---------- shared row helper ----------
 
     def _row(self, parent, row, label_text, field):
@@ -153,6 +154,11 @@ class GetClipApp:
             save_row, text="Browse", command=self._choose_output_dir, bootstyle="secondary-outline",
         ).pack(side=LEFT)
         self._row(card, 3, "Save to", save_row)
+
+        self._row(card, 4, "Filename", tb.Entry(card, textvariable=self.filename_template_var))
+        tb.Label(
+            card, text="Placeholders: {title}, {channel}, {date}", bootstyle=SECONDARY, font=("", 9),
+        ).grid(row=5, column=0, columnspan=2, sticky=W, pady=(0, 4))
 
     def _time_picker(self, parent, h_var, m_var, s_var):
         row = tb.Frame(parent)
@@ -389,6 +395,7 @@ class GetClipApp:
             quality=Quality(self.quality_var.get()),
             start_seconds=start_seconds,
             end_seconds=end_seconds,
+            filename_template=self.filename_template_var.get(),
         )
 
     def _start_queue(self):
