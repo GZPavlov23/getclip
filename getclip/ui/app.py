@@ -11,6 +11,7 @@ from getclip.core.models import DownloadJob, MediaFormat, Quality, QueueItem, Qu
 from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
 from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder
 from getclip.ui.thumbnail import load_thumbnail
+from getclip.core.settings import load_settings, add_recent_folder
 
 PREVIEW_DEBOUNCE_MS = 700
 
@@ -42,7 +43,9 @@ class GetClipApp:
         self.end_h = tb.IntVar(value=0)
         self.end_m = tb.IntVar(value=0)
         self.end_s = tb.IntVar(value=0)
-        self.output_dir_var = tb.StringVar(value=DEFAULT_OUTPUT_DIR)
+        self._settings = load_settings()
+        initial_folder = self._settings["recent_folders"][0] if self._settings["recent_folders"] else DEFAULT_OUTPUT_DIR
+        self.output_dir_var = tb.StringVar(value=initial_folder)
         self.filename_template_var = tb.StringVar(value="{title}")
         self.status_var = tb.StringVar(value="Idle")
 
@@ -149,7 +152,11 @@ class GetClipApp:
         self._row(card, 2, "To", self._time_picker(card, self.end_h, self.end_m, self.end_s))
 
         save_row = tb.Frame(card)
-        tb.Entry(save_row, textvariable=self.output_dir_var).pack(side=LEFT, fill=X, expand=YES, padx=(0, 6))
+        self.recent_folders_combo = tb.Combobox(
+            save_row, textvariable=self.output_dir_var,
+            values=self._settings["recent_folders"], width=28,
+        )
+        self.recent_folders_combo.pack(side=LEFT, fill=X, expand=YES, padx=(0, 6))
         tb.Button(
             save_row, text="Browse", command=self._choose_output_dir, bootstyle="secondary-outline",
         ).pack(side=LEFT)
@@ -227,6 +234,11 @@ class GetClipApp:
         chosen = filedialog.askdirectory()
         if chosen:
             self.output_dir_var.set(chosen)
+            self._update_recent_folders(chosen)
+
+    def _update_recent_folders(self, folder: str):
+        recent = add_recent_folder(folder)
+        self.recent_folders_combo.configure(values=recent)
 
     def _on_url_changed(self, *args):
         source = detect_source_type(self.url_var.get())
@@ -378,6 +390,7 @@ class GetClipApp:
             return None
 
         os.makedirs(self.output_dir_var.get(), exist_ok=True)
+        self._update_recent_folders(self.output_dir_var.get())
 
         start_seconds = None
         end_seconds = None
