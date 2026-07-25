@@ -562,7 +562,16 @@ class GetClipApp:
             tb.dialogs.Messagebox.show_error("Paste a URL first.", "Missing URL")
             return None
 
-        os.makedirs(self.output_dir_var.get(), exist_ok=True)
+        try:
+            os.makedirs(self.output_dir_var.get(), exist_ok=True)
+        except OSError as e:
+            tb.dialogs.Messagebox.show_error(
+                f"Can't access output folder:\n{self.output_dir_var.get()}\n\n"
+                f"({e})\n\nIs the drive connected?",
+                "Output folder unavailable",
+            )
+            return None
+
         self._update_recent_folders(self.output_dir_var.get())
 
         start_seconds = None

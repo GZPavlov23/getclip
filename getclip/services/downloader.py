@@ -104,11 +104,14 @@ def _build_ydl_options(job: DownloadJob, on_progress: Optional[ProgressCallback]
 def _video_format_string(job: DownloadJob) -> str:
     height_map = {"1080p": 1080, "720p": 720, "480p": 480}
     height = height_map.get(job.quality.value)
+    height_filter = f"[height<={height}]" if height is not None else ""
 
-    if height is None:
-        return "bestvideo+bestaudio/best"
-
-    return f"bestvideo[height<={height}]+bestaudio/best[height<={height}]"
+    return (
+        f"bestvideo[vcodec^=avc1]{height_filter}+bestaudio[acodec^=mp4a]"
+        f"/best[vcodec^=avc1]{height_filter}"
+        f"/bestvideo{height_filter}+bestaudio"
+        f"/best{height_filter}"
+    )
 
 import subprocess
 
