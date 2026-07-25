@@ -1,6 +1,6 @@
 # GetClip
 
-A simple desktop app for downloading YouTube videos and Twitch clips/VODs as MP4 or MP3 — with optional timestamp trimming, a live preview before you download, custom filename templates, and a batch queue for grabbing multiple videos at once.
+A simple desktop app for downloading YouTube, TikTok, Instagram, and Twitch clips/VODs as MP4 or MP3 — with optional timestamp trimming, a live preview before you download, custom filename templates, and a batch queue for grabbing multiple videos at once.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -19,7 +19,7 @@ There's no packaged Windows build published yet — see [Building for Windows](#
 
 ## Features
 
-- **YouTube videos and Twitch clips/VODs** — auto-detected from the pasted URL, with a contextual hint (e.g. trimming recommended for long VODs)
+- **YouTube, TikTok, Instagram, and Twitch clips/VODs** — auto-detected from the pasted URL, with a contextual hint (e.g. trimming recommended for long VODs)
 - **Live preview** — see the title, thumbnail, and duration before committing to a download
 - **MP4 or MP3** output, with quality options for video
 - **Timestamp trimming** — grab just the section you need, using precise H:M:S spinners

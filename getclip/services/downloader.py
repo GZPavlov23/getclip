@@ -140,9 +140,14 @@ def _video_format_string(job: DownloadJob) -> str:
     height = height_map.get(job.quality.value)
     height_filter = f"[height<={height}]" if height is not None else ""
 
+    # Different sites label H.264/AAC differently (YouTube: avc1/mp4a, TikTok/Instagram: h264/aac),
+    # so match both rather than assuming YouTube's naming everywhere.
+    vcodec_filter = "[vcodec~='^(avc1|h264)']"
+    acodec_filter = "[acodec~='^(mp4a|aac)']"
+
     return (
-        f"bestvideo[vcodec^=avc1]{height_filter}+bestaudio[acodec^=mp4a]"
-        f"/best[vcodec^=avc1]{height_filter}"
+        f"bestvideo{vcodec_filter}{height_filter}+bestaudio{acodec_filter}"
+        f"/best{vcodec_filter}{height_filter}"
         f"/bestvideo{height_filter}+bestaudio"
         f"/best{height_filter}"
     )

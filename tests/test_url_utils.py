@@ -21,6 +21,18 @@ def test_detects_twitch_channel_link_as_live():
     assert detect_source_type("https://www.twitch.tv/somechannel") == SourceType.TWITCH_LIVE
 
 
+def test_detects_tiktok():
+    assert detect_source_type("https://www.tiktok.com/@someuser/video/123456789") == SourceType.TIKTOK
+
+
+def test_detects_instagram_reel():
+    assert detect_source_type("https://www.instagram.com/reel/Chunk8-jurw/") == SourceType.INSTAGRAM
+
+
+def test_detects_instagram_post():
+    assert detect_source_type("https://www.instagram.com/p/BQ0eAlwhDrw/") == SourceType.INSTAGRAM
+
+
 def test_unknown_url():
     assert detect_source_type("https://example.com/video") == SourceType.UNKNOWN
 
