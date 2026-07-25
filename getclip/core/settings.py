@@ -1,7 +1,20 @@
 import json
+import os
+import platform
 from pathlib import Path
 
-SETTINGS_DIR = Path.home() / "Library" / "Application Support" / "GetClip"
+
+def _settings_dir() -> Path:
+    system = platform.system()
+    if system == "Darwin":
+        return Path.home() / "Library" / "Application Support" / "GetClip"
+    if system == "Windows":
+        base = os.getenv("APPDATA")
+        return (Path(base) if base else Path.home()) / "GetClip"
+    return Path.home() / ".config" / "GetClip"
+
+
+SETTINGS_DIR = _settings_dir()
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 
 MAX_RECENT_FOLDERS = 5

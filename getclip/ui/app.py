@@ -1,27 +1,26 @@
 import datetime
 import os
-import sys
+import platform
 import threading
 from tkinter import filedialog
 
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 
-from getclip.core.config import APP_NAME, APP_VERSION, DEFAULT_OUTPUT_DIR
+from getclip.core.config import APP_NAME, APP_VERSION, DEFAULT_OUTPUT_DIR, resource_path
 from getclip.core.models import DownloadJob, MediaFormat, Quality, QueueItem, QueueStatus
 from getclip.core.settings import load_settings, save_settings, add_recent_folder, add_history_entry, clear_history
 from getclip.core.url_utils import detect_source_type, SOURCE_HINTS
-from getclip.services.downloader import run_download, fetch_preview, reveal_in_finder, send_notification
+from getclip.services.downloader import run_download, fetch_preview, reveal_in_file_manager, send_notification
 from getclip.services.updater import check_for_update
 from getclip.ui.thumbnail import load_thumbnail
 
 PREVIEW_DEBOUNCE_MS = 700
 
-
-def _resource_path(relative_path: str) -> str:
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), relative_path)
+REVEAL_LABEL = {
+    "Darwin": "Show in Finder",
+    "Windows": "Show in Explorer",
+}.get(platform.system(), "Show in Files")
 
 
 class GetClipApp:
@@ -275,7 +274,7 @@ class GetClipApp:
         values = self.history_tree.item(selected[0], "values")
         path = values[3] if len(values) > 3 else ""
         if path:
-            reveal_in_finder(path)
+            reveal_in_file_manager(path)
         else:
             tb.dialogs.Messagebox.show_info("This entry doesn't have a saved file path.", "Not available")
 
@@ -373,7 +372,7 @@ class GetClipApp:
         tb.Label(bottom_row, textvariable=self.status_var, bootstyle=SECONDARY).pack(side=LEFT)
 
         self.show_in_finder_btn = tb.Button(
-            bottom_row, text="Show in Finder", bootstyle="link", state=DISABLED,
+            bottom_row, text=REVEAL_LABEL, bootstyle="link", state=DISABLED,
             command=self._show_last_in_finder,
         )
         self.show_in_finder_btn.pack(side=RIGHT)
@@ -527,7 +526,7 @@ class GetClipApp:
 
     def _show_last_in_finder(self):
         if self._last_downloaded_path:
-            reveal_in_finder(self._last_downloaded_path)
+            reveal_in_file_manager(self._last_downloaded_path)
 
     def _copy_last_path(self):
         if self._last_downloaded_path:
@@ -683,7 +682,7 @@ class GetClipApp:
 
 def main():
     root = tb.Window(themename=load_settings().get("theme", "darkly"))
-    icon_image = tb.PhotoImage(file=_resource_path("assets/icon.png"))
+    icon_image = tb.PhotoImage(file=resource_path("assets/icon.png"))
     root.iconphoto(True, icon_image)
     app = GetClipApp(root)
     app._icon_ref = icon_image
